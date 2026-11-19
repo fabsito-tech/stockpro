@@ -41,6 +41,7 @@ insert into public.product_variants (variant_id,store_id,product_id,sku,size,col
 -- Structural checks.
 select ok((select relrowsecurity from pg_class where oid='public.products'::regclass), 'products has RLS enabled');
 select ok((select relrowsecurity from pg_class where oid='public.sales'::regclass), 'sales has RLS enabled');
+select ok((select bool_and(c.relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname = any(array['profiles','stores','store_members','categories','products','product_variants','customers','sales','sale_items','stock_movements'])), 'RLS is enabled on every business table');
 select ok((select prosecdef from pg_proc where oid='public.record_sale(uuid,text,jsonb,uuid)'::regprocedure), 'record_sale is SECURITY DEFINER');
 select ok((select prosecdef from pg_proc where oid='public.adjust_stock(uuid,uuid,integer,text)'::regprocedure), 'adjust_stock is SECURITY DEFINER');
 select ok((select proconfig @> array['search_path=pg_catalog, auth'] from pg_proc where oid='public.record_sale(uuid,text,jsonb,uuid)'::regprocedure), 'record_sale pins safe search_path');
@@ -111,6 +112,7 @@ select is((select stock_quantity from public.product_variants where variant_id='
 select throws_ok($$select * from public.record_sale('10000000-0000-4000-8000-000000000001','test-sale-key-0002','[{"variant_id":"11110000-0000-4000-8000-000000000002","quantity":2}]'::jsonb,null)$$,'P0001',null,'insufficient stock rejects sale');
 select is((select stock_quantity from public.product_variants where variant_id='11110000-0000-4000-8000-000000000002'),1,'insufficient-stock sale does not decrement the insufficient variant');
 select throws_ok($$select * from public.record_sale('10000000-0000-4000-8000-000000000001','test-sale-key-0003','[{"variant_id":"11110000-0000-4000-8000-000000000001","quantity":0}]'::jsonb,null)$$,'22023',null,'zero quantity is rejected');
+select throws_ok($$select * from public.record_sale('10000000-0000-4000-8000-000000000001','test-sale-key-0006','[{"variant_id":"11110000-0000-4000-8000-000000000001","quantity":-1}]'::jsonb,null)$$,'22023',null,'negative quantity is rejected');
 select is((select stock_quantity from public.product_variants where variant_id='11110000-0000-4000-8000-000000000001'),9,'invalid quantity leaves inventory unchanged');
 select throws_ok($$select * from public.record_sale('10000000-0000-4000-8000-000000000001','test-sale-key-0004','[{"variant_id":"11110000-0000-4000-8000-000000000001","quantity":1},{"variant_id":"11110000-0000-4000-8000-000000000002","quantity":2}]'::jsonb,null)$$,'P0001',null,'mixed basket with one insufficient item fails as a whole');
 select is((select stock_quantity from public.product_variants where variant_id='11110000-0000-4000-8000-000000000001'),9,'failed mixed basket rolls back earlier stock rows');
