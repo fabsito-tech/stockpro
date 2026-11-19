@@ -1,20 +1,21 @@
 # Hoja de seguimiento — STOCKPRO 1.0
 
 ## Etapa 1 — Estructura del proyecto y diseño principal
-- **Estado:** Implementada en el repositorio; pruebas estáticas aprobadas. Sin publicar en GitHub Pages.
-- **Conectores / infraestructura:** Repositorio GitHub `fabsito-tech/stockpro` y proyecto Supabase `STOCKPRO` (`aeymdbhejkkhratlgnfu`, región `sa-east-1`) activos. El proyecto no tiene tablas todavía y el listado de `public` devolvió vacío. La organización gratuita existente y el proyecto inactivo previo quedaron intactos.
-- **Funciones implementadas:** estructura HTML semántica, panel de muestra responsive para escritorio/móvil, navegación visual, menú móvil, paleta oscura con acento verde y datos marcados como ilustrativos.
-- **Archivos creados:** `index.html`, `styles.css`, `app.js`, `README.md`, `SEGUIMIENTO.md`.
-- **Pruebas realizadas:** presencia de etiquetas esenciales y viewport; selectores y enlaces internos; comprobación de sintaxis JS; ausencia de claves privadas; revisión de árbol responsivo y menú en móviles.
-- **Errores encontrados:** la prueba de enlaces estáticos inicialmente asumió que todo destino de navegación tenía un ID HTML, pero los destinos son etapas aún no implementadas; se corrigió el criterio. El entorno no incluye Node ni navegador de pruebas, así que no se pudo validar JS en ejecución ni visualmente.
-- **Errores solucionados:** se corrigió el criterio de validación; no se detectaron defectos de markup responsive en las comprobaciones estáticas.
-- **Pendiente:** prueba visual en navegador real, configurar URL/clave publicable de Supabase sin secretos en GitHub y definir/validar esquema con RLS antes de datos reales; no hay autenticación, persistencia, productos, ventas ni publicación.
-- **Próximo paso recomendado:** completar la prueba visual de Etapa 1; luego Etapa 2 con panel administrativo conectado y controles de seguridad previstos.
+- **Estado:** Interfaz y estructura publicadas en el repositorio; revisión estática inicial registrada. Sin publicar en GitHub Pages.
+- **Conectores / infraestructura:** Repositorio GitHub `fabsito-tech/stockpro`. Proyecto Supabase STOCKPRO ref `aeymdbhejkkhratlgnfu`, región `sa-east-1`; había figurado activo al crearlo, pero el 19/11/2026 el estado consultado fue `INACTIVE` y falló la consulta a tablas. No reactivado ni modificado.
+- **Funciones implementadas:** estructura HTML semántica, panel de muestra responsive para escritorio/móvil, navegación visual y datos marcados como ilustrativos.
+- **Archivos de etapa:** `index.html`, `styles.css`, `app.js`, `README.md`, `SEGUIMIENTO.md`.
+- **Pruebas realizadas:** comprobaciones estáticas de etiquetas, assets y media queries. No hubo navegador real ni entorno JS disponible entonces.
+- **Pendiente:** prueba visual y de navegación en navegador; conexión al backend.
 
-## Criterio para avanzar
-No declarar terminadas funciones que no hayan sido ejecutadas y probadas. Nunca poner datos de demostración como datos reales. Activar RLS antes de exponer tablas y probar aislamiento entre tiendas.
+## Especificación de arquitectura (recibida 2026-11-19)
+- **Estado:** documentada en `ARQUITECTURA.md`; no es implementación ni prueba RLS.
+- **Pendiente:** aplicar y comprobar diseño de esquema, permisos, aislamiento multi-tenant y operaciones de stock.
 
-## Especificación de arquitectura (documento recibido 2026-11-19)
-- **Estado:** analizada e incorporada a `ARQUITECTURA.md`; guía de diseño, todavía no es implementación ni prueba RLS.
-- **Archivo creado:** `ARQUITECTURA.md` con entidades, roles, límites de acceso, proceso transaccional, medidas de credenciales, pruebas de aceptación y notas de publicación.
-- **Pendiente:** diseñar migraciones revisables; implementar RLS por operación/rol; definir función transaccional de ventas e idempotencia; crear dos tiendas y usuarios de prueba; validar todas las pruebas antes de producción.
+## Primera implementación SQL — propuesta (2026-11-19)
+- **Estado:** archivos preparados en el workspace local solamente. **No se ejecutaron en Supabase, no se subieron a GitHub y no se han probado contra un servidor PostgreSQL.** La conexión al proyecto Supabase fue imposible porque estaba inactivo.
+- **Archivos:** `supabase/migrations/20261119222600_stockpro_core.sql` (tipos, tablas, claves foráneas compuestas, índices, restricciones, vista pública limitada, triggers, grants, RLS y RPC de tiendas, miembros, venta transaccional, idempotencia y ajuste de stock); `MIGRACIONES.md` (flujo de revisión y aplicación).
+- **Pruebas realizadas localmente:** parser PostgreSQL `pglast` aceptó 115 sentencias; comprobación textual detectó ausencia de DROP/TRUNCATE, RLS declarado en las 10 tablas, RPC de venta y ajuste de stock, vista pública y límites de transacción. Estas verificaciones estáticas **no** prueban validez semántica en Supabase, grants efectivos, políticas, concurrencia ni aislamiento.
+- **Errores encontrados/corregidos durante revisión:** se separaron grants por operación/columnas; se evitó que el rol `employee` pudiera ajustar stock por RPC; se añadió verificación de pertenencia producto-variante a línea de venta; se validan cantidades de entrada antes de agregarlas.
+- **Pendiente antes de aplicación:** ejecutar primero contra Supabase local descartable y corregir errores; probar dos tiendas/roles, catálogo anon, seguridad de RPC, reintentos idempotentes, stock insuficiente, concurrencia y esquema RLS. Resolver qué hace falta para levantar/reconectar el proyecto remoto. No aplicar cambios remotos sin autorización explícita.
+- **Importante:** el trabajo sigue siendo una propuesta; no declarar tablas ni políticas implementadas. Se observó un riesgo adicional que debe probarse y resolverse antes de aceptar el SQL: en una vista pública, comprobar que el owner y permisos de `public_catalog` realmente no permiten saltarse RLS ni exponer inventario privado.
