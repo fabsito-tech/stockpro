@@ -13,3 +13,8 @@
 
 ## Criterio para avanzar
 No declarar terminadas funciones que no hayan sido ejecutadas y probadas. Nunca poner datos de demostración como datos reales. Activar RLS antes de exponer tablas y probar aislamiento entre tiendas.
+
+## Especificación de arquitectura (documento recibido 2026-11-19)
+- **Estado:** analizada e incorporada a `ARQUITECTURA.md`; guía de diseño, todavía no es implementación ni prueba RLS.
+- **Archivo creado:** `ARQUITECTURA.md` con entidades, roles, límites de acceso, proceso transaccional, medidas de credenciales, pruebas de aceptación y notas de publicación.
+- **Pendiente:** diseñar migraciones revisables; implementar RLS por operación/rol; definir función transaccional de ventas e idempotencia; crear dos tiendas y usuarios de prueba; validar todas las pruebas antes de producción.
