@@ -47,7 +47,7 @@ create unique index store_members_one_active_owner_idx on public.store_members (
 create function public.current_store_role(p_store_id uuid)
 returns public.store_role
 language sql stable security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
   select m.role
   from public.store_members as m
@@ -60,7 +60,7 @@ $$;
 create function public.is_store_member(p_store_id uuid)
 returns boolean
 language sql stable security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
   select public.current_store_role(p_store_id) is not null
 $$;
@@ -68,7 +68,7 @@ $$;
 create function public.can_manage_store(p_store_id uuid)
 returns boolean
 language sql stable security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
   select coalesce(public.current_store_role(p_store_id) in ('owner'::public.store_role, 'admin'::public.store_role), false)
 $$;
@@ -77,7 +77,7 @@ $$;
 create function public.handle_new_auth_user()
 returns trigger
 language plpgsql security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 begin
   insert into public.profiles (user_id, display_name)
@@ -100,7 +100,7 @@ create trigger on_auth_user_created_stockpro
 create function public.create_store(p_name text, p_slug text)
 returns uuid
 language plpgsql security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
 declare
   v_store_id uuid;
@@ -122,7 +122,7 @@ $$;
 create function public.set_store_member(p_store_id uuid, p_user_id uuid, p_role public.store_role, p_active boolean default true)
 returns void
 language plpgsql security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
 declare
   v_existing_role public.store_role;
@@ -316,6 +316,27 @@ left join public.product_variants v on v.store_id = p.store_id and v.product_id 
 where p.is_active and p.is_published
 group by s.slug, s.name, p.product_id, p.name, p.brand, p.description, p.sale_price, p.image_url, c.name;
 
+-- Owner/admin-only cost view. Ordinary members use the base-table column grants,
+-- which intentionally omit purchase_price.
+create view public.manager_products
+with (security_barrier = true)
+as
+select p.*
+from public.products p
+where public.can_manage_store(p.store_id);
+
+-- Store members can read sale history, but purchase costs are null for employees.
+create view public.sale_items_read
+with (security_barrier = true)
+as
+select si.sale_item_id, si.store_id, si.sale_id, si.product_id, si.variant_id,
+       si.product_name_snapshot, si.sku_snapshot, si.size_snapshot, si.color_snapshot,
+       si.quantity, si.unit_sale_price,
+       case when public.can_manage_store(si.store_id) then si.unit_purchase_price else null end as unit_purchase_price,
+       si.line_total, si.created_at
+from public.sale_items si
+where public.is_store_member(si.store_id);
+
 -- ---------- Transactional sales and stock adjustments ----------
 create function public.record_sale(
   p_store_id uuid,
@@ -325,7 +346,7 @@ create function public.record_sale(
 )
 returns table (sale_id uuid, total_amount numeric(14,2), was_replayed boolean)
 language plpgsql security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
 declare
   v_actor uuid := auth.uid();
@@ -351,8 +372,9 @@ begin
   if jsonb_array_length(p_items) not between 1 and 100 then
     raise exception 'Items array must contain 1 to 100 entries' using errcode = '22023';
   end if;
-  if exists (select 1 from jsonb_array_elements(p_items) e where jsonb_typeof(e) <> 'object'
-            or not (e ? 'variant_id') or not (e ? 'quantity')) then
+  if exists (select 1 from jsonb_array_elements(p_items) as elements(item)
+            where jsonb_typeof(elements.item) <> 'object'
+               or not (elements.item ? 'variant_id') or not (elements.item ? 'quantity')) then
     raise exception 'Each item needs variant_id and quantity' using errcode = '22023';
   end if;
   if exists (
@@ -414,10 +436,10 @@ begin
     v_total := v_total + (v_variant.sale_price * v_line.quantity);
   end loop;
 
-  insert into public.sales (store_id, customer_id, created_by, currency_code, idempotency_key, request_hash, total_amount)
+  insert into public.sales as inserted_sale (store_id, customer_id, created_by, currency_code, idempotency_key, request_hash, total_amount)
   select p_store_id, v_customer_id, v_actor, s.currency_code, p_idempotency_key, v_hash, v_total
   from public.stores s where s.store_id = p_store_id and s.is_active
-  returning public.sales.sale_id into v_sale_id;
+  returning inserted_sale.sale_id into v_sale_id;
   if v_sale_id is null then raise exception 'Store is inactive or unavailable' using errcode = 'P0001'; end if;
 
   for v_line in
@@ -451,7 +473,7 @@ $$;
 create function public.adjust_stock(p_store_id uuid, p_variant_id uuid, p_quantity_delta integer, p_reason text)
 returns integer
 language plpgsql security definer
-set search_path = pg_catalog, public, auth
+set search_path = pg_catalog, auth
 as $$
 declare
   v_actor uuid := auth.uid();
@@ -524,7 +546,7 @@ create policy stock_movements_select_member on public.stock_movements for select
 revoke all on public.profiles, public.stores, public.store_members, public.categories,
   public.products, public.product_variants, public.customers, public.sales,
   public.sale_items, public.stock_movements from anon, authenticated;
-revoke all on public.public_catalog from anon, authenticated;
+revoke all on public.public_catalog, public.manager_products, public.sale_items_read from anon, authenticated;
 
 -- Profile edits cannot alter user_id; commercial deletes are deliberately omitted
 -- (archive via is_active so historical sales/audit records are retained).
@@ -536,7 +558,7 @@ grant select on public.store_members to authenticated;
 grant select on public.categories to authenticated;
 grant insert (store_id, name, is_active) on public.categories to authenticated;
 grant update (name, is_active) on public.categories to authenticated;
-grant select on public.products to authenticated;
+grant select (product_id, store_id, category_id, name, brand, description, sale_price, image_url, is_active, is_published, created_at, updated_at) on public.products to authenticated;
 grant insert (store_id, category_id, name, brand, description, purchase_price, sale_price, image_url, is_active, is_published) on public.products to authenticated;
 grant update (category_id, name, brand, description, purchase_price, sale_price, image_url, is_active, is_published) on public.products to authenticated;
 -- store_id/product_id/SKU/options can be inserted; stock quantity is changed only by RPC.
@@ -545,7 +567,9 @@ grant select, insert (store_id, product_id, sku, size, color, low_stock_threshol
 grant select on public.customers to authenticated;
 grant insert (store_id, full_name, email, phone, notes) on public.customers to authenticated;
 grant update (full_name, email, phone, notes) on public.customers to authenticated;
-grant select on public.sales, public.sale_items, public.stock_movements to authenticated;
+grant select on public.sales, public.stock_movements to authenticated;
+grant select (sale_item_id, store_id, sale_id, product_id, variant_id, product_name_snapshot, sku_snapshot, size_snapshot, color_snapshot, quantity, unit_sale_price, line_total, created_at) on public.sale_items to authenticated;
+grant select on public.sale_items_read, public.manager_products to authenticated;
 grant select on public.public_catalog to anon, authenticated;
 
 revoke all on function public.current_store_role(uuid) from public, anon;
