@@ -14,6 +14,7 @@ STOCKPRO debe soportar varias tiendas sin que una tienda pueda consultar o alter
 - `categories` y `products`: catálogo privado por tienda; solo productos activos y publicados se exponen al catálogo público.
 - `product_variants`: talle, color, SKU y existencia por variante.
 - `sales` y `sale_items`: cabecera y detalle con precios fijados al momento de la operación.
+- `manager_products` y `sale_items_read`: vistas de lectura que limitan costos privados a owner/admin; el rol employee no debe recibir precio de compra.
 - `stock_movements`: registro auditable de ingresos, egresos y ajustes.
 - `customers`: contactos e historial limitado a la tienda que los registró.
 
