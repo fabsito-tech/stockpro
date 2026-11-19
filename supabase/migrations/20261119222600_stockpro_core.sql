@@ -426,7 +426,7 @@ begin
     from public.product_variants pv
     join public.products p on p.store_id = pv.store_id and p.product_id = pv.product_id
     where pv.store_id = p_store_id and pv.variant_id = v_line.variant_id
-    for update of pv;
+    for update of pv, p;
     if not found or not v_variant.variant_active or not v_variant.product_active then
       raise exception 'Product variant is unavailable' using errcode = 'P0001';
     end if;
@@ -452,7 +452,7 @@ begin
     from public.product_variants pv
     join public.products p on p.store_id = pv.store_id and p.product_id = pv.product_id
     where pv.store_id = p_store_id and pv.variant_id = v_line.variant_id
-    for update of pv;
+    for update of pv, p;
     insert into public.sale_items (store_id, sale_id, product_id, variant_id,
       product_name_snapshot, sku_snapshot, size_snapshot, color_snapshot, quantity,
       unit_sale_price, unit_purchase_price, line_total)
