@@ -14,10 +14,11 @@
 
 1. Descargá/cloná el repositorio y trabajá en una rama de desarrollo. No guardes passwords, tokens ni claves en archivos del repo.
 2. Instalá la Supabase CLI y Docker siguiendo las instrucciones oficiales de Supabase.
-3. Desde la raíz del repo, inicializá configuración local con `supabase init` solo si todavía no existe `supabase/config.toml`; conservá `supabase/migrations/20261119223000_stockpro_core.sql`.
+3. Si todavía no existe `supabase/config.toml`, inicializá el proyecto con `supabase init` y revisá el archivo generado antes de seguir; conservá las migraciones ya versionadas.
 4. Levantá el stack local con `supabase start`.
 5. Aplicá las migraciones únicamente al stack local con `supabase db reset` (este comando reinicia la base local; no lo ejecutes con `--remote`).
-6. Confirmá localmente todas las tablas, permisos, triggers, vista, funciones y pruebas descritas en `ARQUITECTURA.md`. Si algo falla, corregí el SQL y volvé a probar en local antes de tocar un proyecto alojado.
+6. Ejecutá `supabase test db` para la suite pgTAP; luego ejecutá la prueba concurrente con `STOCKPRO_TEST_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres' bash supabase/tests/concurrency.sh`. El guion rechaza hosts no locales y limpia su fixture fijo.
+7. Confirmá localmente todas las tablas, permisos, triggers, vista, funciones y pruebas descritas en `ARQUITECTURA.md`. Si algo falla, corregí el SQL y volvé a probar en local antes de tocar un proyecto alojado.
 
 ## Aplicación remota (requiere autorización explícita)
 
