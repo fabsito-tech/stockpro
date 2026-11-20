@@ -68,7 +68,7 @@ select set_config('request.jwt.claim.sub','a0000000-0000-4000-8000-000000000001'
 set local role authenticated;
 select is((select count(*)::integer from public.products where store_id='20000000-0000-4000-8000-000000000002'),0,'owner A cannot read store B products');
 select is((select count(*)::integer from public.manager_products where store_id='20000000-0000-4000-8000-000000000002'),0,'owner A cannot see store B through the manager-only view');
-select is((with changed as (update public.products set name='tampered' where store_id='20000000-0000-4000-8000-000000000002' returning 1) select count(*)::integer from changed),0,'owner A cannot modify store B products');
+with changed as (update public.products set name='tampered' where store_id='20000000-0000-4000-8000-000000000002' returning 1) select is((select count(*)::integer from changed),0,'owner A cannot modify store B products');
 select throws_ok($$insert into public.categories(store_id,name) values ('20000000-0000-4000-8000-000000000002','cross tenant')$$,'42501',null,'owner A cannot insert into store B');
 select is((select purchase_price from public.manager_products where product_id='11100000-0000-4000-8000-000000000001'),40::numeric,'owner can read private purchase cost through manager view');
 select lives_ok($$insert into public.categories(store_id,name) values ('10000000-0000-4000-8000-000000000001','Owner category')$$,'owner A can create a category in own store');
@@ -92,11 +92,11 @@ set local role authenticated;
 select throws_ok($$insert into public.products(store_id,name,sale_price) values ('10000000-0000-4000-8000-000000000001','employee product',1)$$,'42501',null,'employee cannot create products');
 select is((select count(*)::integer from public.manager_products where store_id='10000000-0000-4000-8000-000000000001'),0,'employee cannot see the manager-only product view');
 select throws_ok($$select purchase_price from public.products where product_id='11100000-0000-4000-8000-000000000001'$$,'42501',null,'employee cannot select purchase costs from base products');
-select is((with changed as (update public.products set name='employee tamper' where product_id='11100000-0000-4000-8000-000000000001' returning 1) select count(*)::integer from changed),0,'employee cannot update own product');
+with changed as (update public.products set name='employee tamper' where product_id='11100000-0000-4000-8000-000000000001' returning 1) select is((select count(*)::integer from changed),0,'employee cannot update own product');
 select throws_ok($$select public.adjust_stock('10000000-0000-4000-8000-000000000001','11110000-0000-4000-8000-000000000001',1,'unauthorized')$$,'42501',null,'employee cannot adjust inventory');
 select is((select count(*)::integer from public.store_members where store_id='20000000-0000-4000-8000-000000000002'),0,'employee A cannot enumerate store B members');
 select is((select count(*)::integer from public.products where store_id='20000000-0000-4000-8000-000000000002'),0,'employee A cannot query store B products');
-select is((with changed as (update public.products set name='cross tenant employee tamper' where store_id='20000000-0000-4000-8000-000000000002' returning 1) select count(*)::integer from changed),0,'employee A cannot modify store B products');
+with changed as (update public.products set name='cross tenant employee tamper' where store_id='20000000-0000-4000-8000-000000000002' returning 1) select is((select count(*)::integer from changed),0,'employee A cannot modify store B products');
 select throws_ok($$select * from public.record_sale('20000000-0000-4000-8000-000000000002','cross-tenant-sale-001','[{"variant_id":"22220000-0000-4000-8000-000000000001","quantity":1}]'::jsonb,null)$$,'42501',null,'employee A cannot call sale RPC for store B');
 
 -- Valid sale, replay idempotency, insufficient stock, invalid quantity and atomic rollback.
