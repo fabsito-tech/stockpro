@@ -20,6 +20,12 @@
 6. Ejecutá `supabase test db` para la suite pgTAP; luego ejecutá la prueba concurrente con `STOCKPRO_TEST_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres' bash supabase/tests/concurrency.sh`. El guion rechaza hosts no locales y limpia su fixture fijo.
 7. Confirmá localmente todas las tablas, permisos, triggers, vista, funciones y pruebas descritas en `ARQUITECTURA.md`. Si algo falla, corregí el SQL y volvé a probar en local antes de tocar un proyecto alojado.
 
+## Pruebas automatizadas en GitHub Actions
+
+El workflow `.github/workflows/database-tests.yml` corre ante cambios relevantes y también se puede ejecutar manualmente desde GitHub Actions. En un runner Ubuntu instala Supabase CLI y `psql`, inicializa una configuración local, arranca un stack Supabase efímero y aplica las migraciones únicamente con `supabase db reset` sin `--remote`, `supabase link` ni inicio de sesión. Antes de resetear exige que la única migración SQL sea `20261119222600_stockpro_core.sql`.
+
+Luego ejecuta la suite indicada por su ruta exacta con `psql` contra `127.0.0.1:54322`, cuenta aserciones TAP aprobadas/fallidas y corre `supabase/tests/concurrency.sh`, que también rechaza cualquier host no local. Sube logs sanitizados como artefactos por 14 días. El flujo no define secretos de Supabase ni una referencia de proyecto remoto. Revisar el resumen y los artefactos de GitHub Actions: crear el workflow no significa que las pruebas ya hayan corrido ni aprobado.
+
 ## Aplicación remota (requiere autorización explícita)
 
 El proyecto STOCKPRO se observó como inactivo y el intento de consulta de tablas no pudo conectar. Antes de un despliegue, confirmá su estado en Supabase; no lo reactives sin revisar las condiciones y el costo que muestre Supabase.
