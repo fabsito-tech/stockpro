@@ -105,7 +105,7 @@ jobs:
           result=${PIPESTATUS[0]}
           passed=$(grep -Ec '^ok [0-9]+' artifacts/security-tests.log || true)
           failed=$(grep -Ec '^not ok [0-9]+' artifacts/security-tests.log || true)
-          expected=$(grep -Ec '^select (ok|is|throws_ok|lives_ok)[(]' supabase/tests/20261119_stockpro_security.test.sql || true)
+          expected=$(grep -Ec '^(select|with) .*(ok|is|throws_ok|lives_ok)[(]' supabase/tests/20261119_stockpro_security.test.sql || true)
           {
             echo "Security suite: $passed passed, $failed failed, $expected declared assertions; psql exit $result."
             if [ "$((passed + failed))" -ne "$expected" ]; then
