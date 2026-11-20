@@ -1,0 +1,172 @@
+name: STOCKPRO local database tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/database-tests.yml'
+      - 'MIGRACIONES.md'
+      - 'ARQUITECTURA.md'
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/database-tests.yml'
+      - 'MIGRACIONES.md'
+      - 'ARQUITECTURA.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stockpro-local-db-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-local:
+    name: Local Supabase migration and database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Local-only Supabase CLI defaults. No remote project ref, token, or password is configured.
+      STOCKPRO_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Prepare local Supabase config
+        id: config
+        run: |
+          mkdir -p artifacts
+          {
+            echo "supabase --version"
+            supabase --version
+            echo "psql --version"
+            psql --version
+          } | tee artifacts/tool-versions.log
+          if [ ! -f supabase/config.toml ]; then
+            supabase init
+          fi
+          test -f supabase/config.toml
+          echo "Created/verified local supabase/config.toml; no remote linking or login performed." | tee -a artifacts/tool-versions.log
+
+      - name: Start disposable local Supabase stack
+        id: local_stack
+        continue-on-error: true
+        run: |
+          set +e
+          supabase start > /tmp/stockpro-supabase-start.log 2>&1
+          result=$?
+          if [ "$result" -eq 0 ]; then
+            echo "Supabase local stack started (startup output intentionally not archived because it may contain ephemeral local keys)." | tee artifacts/startup.log
+          else
+            echo "Supabase local stack failed to start (exit $result). Startup output is suppressed to avoid archiving generated keys." | tee artifacts/startup.log
+            exit "$result"
+          fi
+
+      - name: Apply versioned migrations to local database only
+        id: migrate
+        continue-on-error: true
+        run: |
+          set +e
+          target='supabase/migrations/20261119222600_stockpro_core.sql'
+          test -f "$target" || { echo "Missing expected migration: $target" | tee artifacts/migration.log; exit 1; }
+          migration_files=$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print | sort)
+          if [ "$migration_files" != "$target" ]; then
+            echo "Refusing reset: expected only $target, found:" | tee artifacts/migration.log
+            printf '%s\\n' "$migration_files" | tee -a artifacts/migration.log
+            exit 1
+          fi
+          echo "Applying only $target to disposable local stack via supabase db reset." | tee artifacts/migration.log
+          supabase db reset 2>&1 | tee -a artifacts/migration.log
+          result=${PIPESTATUS[0]}
+          echo "Migration application exit code: $result" | tee -a artifacts/migration.log
+          exit "$result"
+
+      - name: Run pgTAP security and sales suite
+        id: security_tests
+        continue-on-error: true
+        run: |
+          set +e
+          psql "$STOCKPRO_TEST_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At \
+            -f supabase/tests/20261119_stockpro_security.test.sql \
+            2>&1 | tee artifacts/security-tests.log
+          result=${PIPESTATUS[0]}
+          passed=$(grep -Ec '^ok [0-9]+' artifacts/security-tests.log || true)
+          failed=$(grep -Ec '^not ok [0-9]+' artifacts/security-tests.log || true)
+          expected=$(grep -Ec '^select (ok|is|throws_ok|lives_ok)[(]' supabase/tests/20261119_stockpro_security.test.sql || true)
+          {
+            echo "Security suite: $passed passed, $failed failed, $expected declared assertions; psql exit $result."
+            if [ "$((passed + failed))" -ne "$expected" ]; then
+              echo "ERROR: TAP records do not match the declared assertion count."
+              result=1
+            fi
+            echo "Security suite effective exit code: $result"
+            if [ "$failed" -gt 0 ]; then
+              echo "Failed assertions:"
+              grep -E '^not ok [0-9]+' artifacts/security-tests.log || true
+            fi
+          } | tee artifacts/security-summary.log
+          exit "$result"
+
+      - name: Run last-unit concurrent sales test
+        id: concurrency_test
+        continue-on-error: true
+        run: |
+          set +e
+          bash supabase/tests/concurrency.sh 2>&1 | tee artifacts/concurrency.log
+          result=${PIPESTATUS[0]}
+          if [ "$result" -eq 0 ]; then
+            echo "Concurrency suite: 1 scenario passed, 0 failed." | tee artifacts/concurrency-summary.log
+          else
+            echo "Concurrency suite: 0 scenarios passed, 1 failed (exit $result)." | tee artifacts/concurrency-summary.log
+          fi
+          exit "$result"
+
+      - name: Write workflow test summary
+        if: always()
+        env:
+          START_RESULT: ${{ steps.local_stack.outcome }}
+          MIGRATION_RESULT: ${{ steps.migrate.outcome }}
+          SECURITY_RESULT: ${{ steps.security_tests.outcome }}
+          CONCURRENCY_RESULT: ${{ steps.concurrency_test.outcome }}
+        run: |
+          {
+            echo '## STOCKPRO local database CI'
+            echo
+            echo '| Stage | Result |'
+            echo '|---|---|'
+            echo "| Local Supabase stack | ${START_RESULT:-not run} |"
+            echo "| Versioned migration(s) | ${MIGRATION_RESULT:-not run} |"
+            echo "| pgTAP security/sales suite | ${SECURITY_RESULT:-not run} |"
+            echo "| Concurrent last-unit sale | ${CONCURRENCY_RESULT:-not run} |"
+            echo
+            for file in artifacts/security-summary.log artifacts/concurrency-summary.log; do
+              if [ -f "$file" ]; then cat "$file"; echo; fi
+            done
+            echo 'Target: disposable local Supabase stack on the GitHub runner. No remote Supabase credentials or project reference are used.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${START_RESULT:-failure}" != success ] || [ "${MIGRATION_RESULT:-failure}" != success ] || [ "${SECURITY_RESULT:-failure}" != success ] || [ "${CONCURRENCY_RESULT:-failure}" != success ]; then
+            echo 'At least one stage did not pass.'
+            exit 1
+          fi
+
+      - name: Upload test and migration logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockpro-local-db-test-logs-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
