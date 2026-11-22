@@ -114,11 +114,11 @@
   $('#productSearch').addEventListener('input',renderProducts);
   $('#addProduct').addEventListener('click',()=>openProduct());
   $('#addVariant').addEventListener('click',()=>addVariantRow());
-  $('#variantEditor').addEventListener('click',e=>{if(e.target.closest('.remove-variant')){if($$('.variant-row','#variantEditor').length>1)e.target.closest('.variant-row').remove();else toast('El producto necesita al menos una variante.');}});
+  $('#variantEditor').addEventListener('click',e=>{if(e.target.closest('.remove-variant')){if($$('.variant-row',$('#variantEditor')).length>1)e.target.closest('.variant-row').remove();else toast('El producto necesita al menos una variante.');}});
   $('#productRows').addEventListener('click',e=>{const button=e.target.closest('[data-edit]');if(button){const product=db.products.find(p=>p.id===button.dataset.edit);if(product)openProduct(product);}});
   $('#productForm').addEventListener('submit',e=>{
     e.preventDefault();
-    const rows=$$('.variant-row','#variantEditor');
+    const rows=$$('.variant-row',$('#variantEditor'));
     const variants=rows.map(row=>({id:row.dataset.id||'',size:$('.variant-size',row).value.trim(),color:$('.variant-color',row).value.trim(),stock:Number($('.variant-stock',row).value)}));
     if(variants.some(v=>!v.size||!v.color||!Number.isInteger(v.stock)||v.stock<0)){toast('Revisá talle, color y cantidad de cada variante.');return;}
     const editing=$('#editingProductId').value;const old=db.products.find(p=>p.id===editing);
